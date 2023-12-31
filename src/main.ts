@@ -1,24 +1,84 @@
-import './style.css'
-import typescriptLogo from './typescript.svg'
-import viteLogo from '/vite.svg'
-import { setupCounter } from './counter.ts'
+import type Readability_ from '@mozilla/readability'
+import { isNil } from 'lodash-es'
+import type TurndownService from 'turndown'
+import { getSelectionHtml } from './utils'
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <div>
-    <a href="https://vitejs.dev" target="_blank">
-      <img src="${viteLogo}" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://www.typescriptlang.org/" target="_blank">
-      <img src="${typescriptLogo}" class="logo vanilla" alt="TypeScript logo" />
-    </a>
-    <h1>Vite + TypeScript</h1>
-    <div class="card">
-      <button id="counter" type="button"></button>
-    </div>
-    <p class="read-the-docs">
-      Click on the Vite and TypeScript logos to learn more
-    </p>
-  </div>
-`
+Promise.all([
+	// @ts-ignore
+	import('https://esm.sh/turndown') as Promise<{
+		default: TurndownService
+	}>,
+	// @ts-ignore
+	import('https://esm.sh/@mozilla/readability') as Promise<
+		typeof Readability_
+	>
+])
+	.then(async ([{ default: Turndown }, { Readability }]) => {
+		const options = {
+			vault: '',
+			folder: '',
+			tags: 'clippings'
+		}
+		const vault_name = isNil(options.vault)
+			? ''
+			: `&vault=${encodeURIComponent(`${options.vault}`)}`
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+		const selection = getSelectionHtml()
+
+		const {
+			title,
+			byline: author,
+			content
+			// biome-ignore lint/style/noNonNullAssertion: <explanation>
+		} = new Readability(document.cloneNode(true) as Document).parse()!
+
+		// I'm a Windows user xD
+		const file_name = title.replace(':', '').replace(/[/\\?%*|'<>]/g, '-')
+		const content_to_convert =
+			selection === undefined || selection === '' ? content : selection
+
+		const converted_content = (
+			Turndown as unknown as (
+				options: TurndownService.Options
+			) => TurndownService
+		)({
+			headingStyle: 'atx',
+			hr: '---',
+			bulletListMarker: '-',
+			codeBlockStyle: 'fenced',
+			emDelimiter: '*'
+		}).turndown(content_to_convert)
+
+		const file_content = (function compose_file_content() {
+			const tag_line = `---\ntags: ${[
+				options.tags,
+				prompt('Any additional tags (separate by comma)?')
+			]
+				.filter(s => !isNil(s) && s !== '')
+				.join(', ')}\n---\n`
+			const clipped_time_line = `| Time  | ${new Date().toLocaleString(
+				'zh-cn'
+			)} |`
+			const alignment_line = '|:---------- |:--- |'
+			const source_line = `| Source | ${document.URL} |`
+			const author_line = isNil(author) ? '' : `| Author  | ${author} |`
+
+			const headers = [
+				tag_line,
+				clipped_time_line,
+				alignment_line,
+				source_line,
+				author_line
+			]
+			return `${headers.join('\n')}\n\n${converted_content}`
+		})()
+
+		document.location.href = `obsidian://new?file=${encodeURIComponent(
+			options.folder + file_name
+		)}&content=${encodeURIComponent(file_content)}${vault_name}`
+	})
+	.finally(async () =>
+		fetch(`https://archive.ph/submit/?url=${document.URL}`, {
+			mode: 'no-cors'
+		})
+	)
