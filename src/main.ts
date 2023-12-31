@@ -73,9 +73,13 @@ Promise.all([
 			return `${headers.join('\n')}\n\n${converted_content}`
 		})()
 
-		document.location.href = `obsidian://new?file=${encodeURIComponent(
-			options.folder + file_name
-		)}&content=${encodeURIComponent(file_content)}${vault_name}`
+		const finalObsidianUrl =
+			`obsidian://new?file=${encodeURIComponent(
+				options.folder + file_name
+			)}&content=${encodeURIComponent(file_content)}${vault_name}`
+
+		document.location.href = finalObsidianUrl
+		console.log(finalObsidianUrl)
 	})
 	.finally(async () =>
 		fetch(`https://archive.ph/submit/?url=${document.URL}`, {
